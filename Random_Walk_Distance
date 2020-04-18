@@ -5,6 +5,8 @@ import glob
 import random
 import numpy as np
 
+# Parameters:
+
 # Diffusion Coefficient
 diffusionCoefficient = 0.1
 # Time internval
@@ -14,19 +16,20 @@ timePoint = 2000000
 # Working Directory
 workdir = '/Directry/'
 
-#-------------------------------------------------------------------------
-#:: AUXILIAR FUNCTION FOR CALCULATING THE DISTANCES
-#-------------------------------------------------------------------------
-
-
 def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surface_name):
 
-    #Open the surface of Mito
+    """
+    Calculates the distance of arandom point located inside the valid volume and
+    instances of this point shifted as if the point was moving according a diffusion
+    process.
+    """
+
+    # Open the mitochondrial surface
     SurfaceMito = LegacyVTKReader(FileNames=[mito_surface_name])
     SurfaceMito = GetActiveSource()
     SurfaceMito = servermanager.Fetch(SurfaceMito) 
   
-    #Open the outer surface of Cell
+    # Open the cellular outer surface
     OuterSurfaceCell = LegacyVTKReader(FileNames=[cell_outer_surface_name])
     OuterSurfaceCell = GetActiveSource()
     OuterSurfaceCell = servermanager.Fetch(OuterSurfaceCell) 
@@ -36,7 +39,7 @@ def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surf
     polydataOuterCell = geometryFilterOuterCell.GetOutput()
     #print polydataOuterCell.GetNumberOfPoints()
 
-    #Open the inner surface of Cell
+    # Open the cellular inner surface
     InnerSurfaceCell = LegacyVTKReader(FileNames=[cell_inner_surface_name])
     InnerSurfaceCell = GetActiveSource()
     InnerSurfaceCell = servermanager.Fetch(InnerSurfaceCell) 
@@ -45,21 +48,22 @@ def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surf
     geometryFilterInnerCell.Update()
     polydataInnerCell = geometryFilterInnerCell.GetOutput()
     
-    
-    #Get the bounds of the cell(xmin,xmax,ymin,ymax,zmin,zmax)
+    # Get the bounds of the cell (xmin,xmax,ymin,ymax,zmin,zmax)
     bounds = [0]*6
     OuterSurfaceCell.GetBounds(bounds)
    
-    #Creating the point locator 
+    # Creating the point locator 
     LocatorMito = vtk.vtkPointLocator()
     LocatorMito.SetDataSet(SurfaceMito)
     LocatorMito.BuildLocator()
    
-    #Vector to store the distance from foci to mito
+    # Vector to store the foci-mitochondria distance
     DistanceToMito = []
     DistanceMoved = []
 
- 
+    # Filters for calculating whether a given point is inside
+    # (i) outer surface, (ii) inner surface or (iii) mitochodnrial
+    # surface
     selectEnclosedPointsOuterCell = vtk.vtkSelectEnclosedPoints()
     selectEnclosedPointsOuterCell.Initialize(polydataOuterCell)
 
@@ -72,44 +76,60 @@ def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surf
     insideOuterCell = 0
     insideInnerCell = 1 
 
+    # Generate a point inside inner cullular surface
     while insideOuterCell == 0 and insideInnerCell == 1:
+    
         x = random.uniform(bounds[0], bounds[1])
         y = random.uniform(bounds[2], bounds[3])
         z = random.uniform(bounds[4], bounds[5])
        
         insideOuterCell = selectEnclosedPointsOuterCell.IsInsideSurface(x, y, z)
         insideInnerCell = selectEnclosedPointsInnerCell.IsInsideSurface(x, y, z)
-        #Check to see if the random foci is inside the cell
+        
+        # Check to see if the random foci is inside the cell
         if insideOuterCell ==1 and insideInnerCell==0:
+        
+            # Check to see if the random foci is inside the mitochrondrial surface
             insideMito = selectEnclosedPointsMito.IsInsideSurface(x,y,z)
-            #Check to see if the random foci is inside the mitochroniral
+            
             if insideMito:
+                
+                # Point can't be accepted
                 insideOuterCell = 0
                 insideInnerCell = 1
                 continue
+                
             else:  
-                #Calculate the distance between the foci (x,y,z) and the Surface                
-
+            
+                # Accept point and calculate the distance between the foci (x,y,z)
+                # and the mitochodnrial surface
                 r = [x, y, z]
                 ptId = LocatorMito.FindClosestPoint(r)
                 u = SurfaceMito.GetPoints().GetPoint(ptId)
                 distance = math.sqrt((r[0]-u[0])**2+(r[1]-u[1])**2+(r[2]-u[2])**2)
                 DistanceToMito.append(distance)
                 DistanceMoved.append(0)
+                
         else:
+        
             insideOuterCell = 0
             insideInnerCell = 1
             continue
+
+    # For each timepoint we simulate new random instances of the point x,y,z
+    # shifted as if the point was moving according to a diffusion process with
+    # diffusion coefficient given by "diffusionCoefficient"
+    for randomNumber in range(timePoint):
     
-    
-    for randomNumber in range(timePoint):   
         # mean of x,y,z
         muX = x; 
         muY = y; 
         muZ = z; 
+        
         # standard deviation
         sigma = math.sqrt(2 * diffusionCoefficient * time)  
-        #Use
+        
+        # Drawn a new coordinates from normal distribution
         xi = np.random.normal(muX, sigma, 1) 
         yi = np.random.normal(muY, sigma, 1) 
         zi = np.random.normal(muZ, sigma, 1) 
@@ -117,14 +137,19 @@ def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surf
         radius = math.sqrt((xi-x)**2+(yi-y)**2+(zi-z)**2)
         insideOuterCell = selectEnclosedPointsOuterCell.IsInsideSurface(xi, yi, zi)
         insideInnerCell = selectEnclosedPointsInnerCell.IsInsideSurface(xi, yi, zi)
+        
         if insideOuterCell == 1 and insideInnerCell == 0:
+        
+            # Check to see if the random foci is inside the mitochroniral
             insideMito = selectEnclosedPointsMito.IsInsideSurface(xi,yi,zi)
-            #Check to see if the random foci is inside the mitochroniral
+                    
             if insideMito:
+            
                 continue
-            else:  
-                #Calculate the distance between the foci (x,y,z) and the Surface
-
+                
+            else:
+            
+                # Calculate the distance between the foci (x,y,z) and mitochodnrial surface
                 r = [xi, yi, zi]
                 ptId = LocatorMito.FindClosestPoint(r)
                 u = SurfaceMito.GetPoints().GetPoint(ptId)
@@ -134,7 +159,9 @@ def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surf
                 x = xi
                 y = yi
                 z = zi
+                
         else:
+        
             continue
 
     Delete(GetActiveSource())
@@ -144,34 +171,32 @@ def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surf
     del InnerSurfaceCell
     del LocatorMito
 
-    return DistanceToMito,DistanceMoved
+    return DistanceToMito, DistanceMoved
 
-#-------------------------------------------------------------------------
-#:: MAIN FUNCTION STARTS HERE
-#-------------------------------------------------------------------------
- 
-#List the main directory content
+"""
+Main function
+"""
+
+# List the main directory content
 for item in os.listdir(workdir):
  
-    #If the item corresponds to a subfolder
+    # If the item corresponds to a subfolder
     if os.path.isdir(os.path.join(workdir,item)):
  
         subdir = os.path.join(workdir,item)
- 
         print subdir
 
-        #File where the result are going to be written down
+        # File where the result are going to be written down
         fsave = open("%s/results.txt"%(subdir), 'w')
 
         fsave.write("Folder\t\tSurface\t\t\tFoci\tDistanceToMito\tDistanceMoved\n")
  
-        #Vector to store surfaces name
+        # Vector to store surfaces name
         SurfaceNamesMito = glob.glob(os.path.join(workdir,item,'*00_surface.vtk'))
         SurfaceNamesInnerCell = glob.glob(os.path.join(workdir,item,'InnerCell*.vtk'))
         SurfaceNamesOuterCell = glob.glob(os.path.join(workdir,item,'OuterCell*.vtk'))
 
-
-        #Read the cell file surface_OM*.vtk and the mito file surface_IM*.vtk
+        # Read the cell file surface_OM*.vtk and the mito file surface_IM*.vtk
         for s in range(len(SurfaceNamesMito)):
             DistanceToMito, DistanceMoved = CalculateDistance(SurfaceNamesMito[s], SurfaceNamesInnerCell[s], SurfaceNamesOuterCell[s])
             
