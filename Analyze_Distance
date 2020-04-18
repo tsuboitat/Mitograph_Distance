@@ -1,0 +1,76 @@
+#!/usr/bin/env python
+import os
+import vtk
+import math
+import numpy
+import paraview.servermanager
+
+def GetNumberOfTimeSteps():
+    Name = GetSources().keys()[0][0]
+    return numpy.size(FindSource(Name).TimestepValues)
+
+Views = GetViews()
+
+NTimeSteps = GetNumberOfTimeSteps()
+
+print "Number of time steps = %d" %(NTimeSteps)
+
+# Finding the sources names 
+Sources = GetSources()
+S1Name = Sources.keys()[0][0]
+S2Name = Sources.keys()[1][0]
+if FindSource(S1Name).GetDataInformation().GetDataClassName() != 'vtkPolyData':
+    Aux = S1Name
+    S1Name = S2Name
+    S2Name = Aux
+
+# Path to save the results
+Path = os.path.dirname(FindSource(S1Name).FileNames[1])
+
+fsave = open("%s/results.txt"%(Path), 'w')
+fsave.write("TimePoint\tPixelIntensity\tOrder\tDistance\n")
+
+for time in range(0,NTimeSteps):
+
+    # Updating time
+    for view in range(0,numpy.size(Views)):
+        SetActiveView(Views[view])
+        GetActiveView().ViewTime = time
+        Render()
+
+    # Mitochondrial surface
+    Surface = servermanager.Fetch(FindSource(S1Name))
+
+    #print "Number of points on Surface[%d] = %d" %(time,Surface.GetNumberOfPoints())
+
+    # Creating the point locator
+    Locator = vtk.vtkPointLocator()
+    Locator.SetDataSet(Surface)
+    Locator.BuildLocator()
+
+    # Table of foci coordinates
+    XYZTable = servermanager.Fetch(FindSource(S2Name))
+
+    #print "Number of foci = %d" %(XYZTable.GetNumberOfRows())
+
+    # For each foci
+    dist = []
+    max_intensity = 0
+    brightest_foci = 0
+    for row in range(0,XYZTable.GetNumberOfRows()):
+        line = XYZTable.GetValue(row,0)
+        x, y, z, pixel = [ float(v) for v in (line.ToString()).split() ]
+        r = [x, y, z]
+
+        # Looking for the closest point on the surface
+        ptId = Locator.FindClosestPoint(r)
+        u = Surface.GetPoints().GetPoint(ptId)
+
+        #Calculating the distance
+        d = math.sqrt((r[0]-u[0])**2+(r[1]-u[1])**2+(r[2]-u[2])**2)
+
+        dist = dist + [d]
+
+        fsave.write("%d \t %1.3f \t %d \t %1.3f\n" %(time,pixel,row,d))
+
+fsave.close()
