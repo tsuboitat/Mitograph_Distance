@@ -14,7 +14,7 @@ time = 3
 # Size of the data
 timePoint = 2000000
 # Working Directory
-workdir = '/Directry/'
+workdir = '/Directry/ '
 
 def CalculateDistance(mito_surface_name,cell_inner_surface_name, cell_outer_surface_name):
 
